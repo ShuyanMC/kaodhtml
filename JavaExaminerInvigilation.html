@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>考官监控后台</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/element-ui@2.15.13/lib/theme-chalk/index.css">
+    <script src="https://cdn.jsdelivr.net/npm/vue@2.6.14/dist/vue.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/element-ui@2.15.13/lib/index.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div id="app">
+        <div class="examiner-container">
+            <!-- 顶部信息栏 -->
+            <div class="examiner-header">
+                <h1>考试监控系统</h1>
+                <div class="examiner-info">
+                    <span>考官: {{username}}</span>
+                    <span>考生总数: {{candidates.length}}</span>
+                    <span>考试状态: {{examStatusText}}</span>
+                    <span>考试时间: {{examTimeText}}</span>
+                </div>
+            </div>
+            
+            <!-- 考试配置 -->
+            <div class="config-section">
+                <h2>考试配置</h2>
+                <el-form :model="examConfig" label-width="120px">
+                    <el-form-item label="开始时间">
+                        <el-date-picker
+                            v-model="examConfig.startTime"
+                            type="datetime"
+                            placeholder="选择考试开始时间"
+                            value-format="yyyy-MM-ddTHH:mm:ss"
+                        ></el-date-picker>
+                    </el-form-item>
+                    <el-form-item label="考试时长(秒)">
+                        <el-input-number v-model="examConfig.duration" :min="60" :max="86400"></el-input-number>
+                    </el-form-item>
+                    <el-form-item label="最晚入场(秒)">
+                        <el-input-number v-model="examConfig.lateEntryCutoff" :min="60" :max="3600"></el-input-number>
+                    </el-form-item>
+                    <el-form-item>
+                        <el-button type="primary" @click="updateExamConfig">更新配置</el-button>
+                    </el-form-item>
+                </el-form>
+            </div>
+            
+            <!-- 考生监控 -->
+            <div class="monitor-section">
+                <h2>考生监控</h2>
+                
+                <div class="candidate-grid">
+                    <div class="candidate-card" v-for="candidate in candidates" :key="candidate.username" 
+                         :class="{
+                             'status-not-started': candidate.status === 'not_started',
+                             'status-in-progress': candidate.status === 'in_progress',
+                             'status-completed': candidate.status === 'completed',
+                             'status-disqualified': candidate.status === 'disqualified'
+                         }">
+                        <div class="candidate-header">
+                            <span class="candidate-name">{{candidate.username}}</span>
+                            <span class="candidate-status">{{getStatusText(candidate.status)}}</span>
+                        </div>
+                        <div class="candidate-details">
+                            <p>进度: {{candidate.progress}}%</p>
+                            <p>最后活动: {{formatTime(candidate.lastActivity)}}</p>
+                            <p>违规次数: {{candidate.violations.length}}</p>
+                            <p>全屏: {{candidate.isFullscreen ? '是' : '否'}}</p>
+                            <p>页面可见: {{candidate.isVisible ? '是' : '否'}}</p>
+                        </div>
+                        <div class="candidate-actions">
+                            <el-button size="mini" @click="viewCandidateDetails(candidate.username)">详情</el-button>
+                            <el-button size="mini" type="warning" @click="showViolationDialog(candidate.username)" 
+                                       :disabled="candidate.status !== 'in_progress'">违规记录</el-button>
+                            <el-button size="mini" type="danger" @click="disqualifyCandidate(candidate.username)"
+                                       :disabled="candidate.status !== 'in_progress'">取消资格</el-button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 统计图表 -->
+            <div class="stats-section">
+                <h2>考试统计</h2>
+                <div class="chart-container">
+                    <canvas id="statusChart"></canvas>
+                </div>
+                <div class="chart-container">
+                    <canvas id="progressChart"></canvas>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 考生详情弹窗 -->
+        <el-dialog
+            title="考生详情"
+            :visible.sync="detailDialogVisible"
+            width="70%"
+        >
+            <div v-if="selectedCandidate" class="candidate-detail">
+                <h3>基本信息</h3>
+                <p>用户名: {{selectedCandidate.username}}</p>
+                <p>状态: {{getStatusText(selectedCandidate.status)}}</p>
+                <p>开始时间: {{formatTime(selectedCandidate.startTime)}}</p>
+                <p>最后活动: {{formatTime(selectedCandidate.lastActivity)}}</p>
+                <p>进度: {{selectedCandidate.progress}}%</p>
+                <p>全屏状态: {{selectedCandidate.isFullscreen ? '是' : '否'}}</p>
+                <p>页面可见: {{selectedCandidate.isVisible ? '是' : '否'}}</p>
+                
+                <h3>违规记录</h3>
+                <el-table :data="selectedCandidate.violations" border style="width: 100%">
+                    <el-table-column prop="timestamp" label="时间" width="180"></el-table-column>
+                    <el-table-column prop="reportedBy" label="报告人" width="120"></el-table-column>
+                    <el-table-column prop="level" label="级别" width="100"></el-table-column>
+                    <el-table-column prop="description" label="描述"></el-table-column>
+                </el-table>
+                
+                <h3>答题情况</h3>
+                <el-tabs type="border-card">
+                    <el-tab-pane label="选择题">
+                        <h4>单选题</h4>
+                        <div v-for="i in 10" :key="'single-'+i" class="answer-item">
+                            <p>{{i}}. 答案: {{selectedCandidate.answers['single-'+i] || '未作答'}}</p>
+                        </div>
+                        
+                        <h4>多选题</h4>
+                        <div v-for="i in 5" :key="'multi-'+i" class="answer-item">
+                            <p>{{i}}. 答案: {{selectedCandidate.answers['multi-'+i] ? selectedCandidate.answers['multi-'+i].join(', ') : '未作答'}}</p>
+                        </div>
+                    </el-tab-pane>
+                    <el-tab-pane label="编程题">
+                        <div v-for="i in 3" :key="'prog-'+i" class="answer-item">
+                            <h4>题{{i}}（{{i === 0 ? 10 : i === 1 ? 15 : 20}}分）</h4>
+                            <pre>{{selectedCandidate.answers['prog-'+i] || '未作答'}}</pre>
+                        </div>
+                    </el-tab-pane>
+                </el-tabs>
+            </div>
+            <span slot="footer" class="dialog-footer">
+                <el-button type="primary" @click="detailDialogVisible = false">关闭</el-button>
+            </span>
+        </el-dialog>
+        
+        <!-- 记录违规弹窗 -->
+        <el-dialog
+            title="记录违规行为"
+            :visible.sync="violationDialogVisible"
+        >
+            <el-form :model="violationForm" label-width="80px">
+                <el-form-item label="违规级别">
+                    <el-select v-model="violationForm.level" placeholder="请选择违规级别">
+                        <el-option label="一级（扣10分）" value="一级"></el-option>
+                        <el-option label="二级（扣30分）" value="二级"></el-option>
+                        <el-option label="三级（取消资格）" value="三级"></el-option>
+                    </el-select>
+                </el-form-item>
+                <el-form-item label="违规描述">
+                    <el-input type="textarea" v-model="violationForm.description"></el-input>
+                </el-form-item>
+            </el-form>
+            <span slot="footer" class="dialog-footer">
+                <el-button @click="violationDialogVisible = false">取消</el-button>
+                <el-button type="primary" @click="recordViolation">确认</el-button>
+            </span>
+        </el-dialog>
+    </div>
+
+    <script>
+        new Vue({
+            el: '#app',
+            data() {
+                return {
+                    username: '',
+                    candidates: [],
+                    examConfig: {
+                        startTime: '',
+                        duration: 7200,
+                        lateEntryCutoff: 600
+                    },
+                    examStatus: 'not_started',
+                    detailDialogVisible: false,
+                    violationDialogVisible: false,
+                    selectedCandidate: null,
+                    violationForm: {
+                        candidateId: '',
+                        level: '一级',
+                        description: ''
+                    },
+                    statusChart: null,
+                    progressChart: null,
+                    ws: null,
+                    refreshInterval: null
+                };
+            },
+            computed: {
+                examStatusText() {
+                    const now = new Date();
+                    const startTime = new Date(this.examConfig.startTime);
+                    
+                    if (now < startTime) return '未开始';
+                    
+                    const endTime = new Date(startTime.getTime() + this.examConfig.duration * 1000);
+                    if (now > endTime) return '已结束';
+                    
+                    return '进行中';
+                },
+                examTimeText() {
+                    if (!this.examConfig.startTime) return '';
+                    
+                    const startTime = new Date(this.examConfig.startTime);
+                    const endTime = new Date(startTime.getTime() + this.examConfig.duration * 1000);
+                    
+                    return `${startTime.toLocaleString()} - ${endTime.toLocaleString()}`;
+                }
+            },
+            created() {
+                this.initializeExaminer();
+            },
+            mounted() {
+                // 初始化图表
+                this.initCharts();
+                
+                // 设置定时刷新
+                this.refreshInterval = setInterval(this.refreshCandidates, 5000);
+            },
+            beforeDestroy() {
+                if (this.refreshInterval) clearInterval(this.refreshInterval);
+                if (this.ws) this.ws.close();
+            },
+            methods: {
+                async initializeExaminer() {
+                    try {
+                        // 验证登录状态
+                        const verifyRes = await axios.get('/api/verify');
+                        if (!verifyRes.data.authenticated || verifyRes.data.role !== 'examiner') {
+                            window.location.href = '/';
+                            return;
+                        }
+                        
+                        this.username = verifyRes.data.username;
+                        
+                        // 获取考试配置
+                        const configRes = await axios.get('/api/exam/config');
+                        this.examConfig = configRes.data;
+                        
+                        // 获取考生列表
+                        await this.refreshCandidates();
+                        
+                        // 连接WebSocket
+                        this.connectWebSocket();
+                    } catch (error) {
+                        console.error('初始化考官界面失败:', error);
+                        this.$message.error('初始化失败，请刷新页面重试');
+                    }
+                },
+                connectWebSocket() {
+                    this.ws = new WebSocket(`ws://${window.location.host}?type=examiner&userId=${this.username}`);
+                    
+                    this.ws.onmessage = (event) => {
+                        const data = JSON.parse(event.data);
+                        
+                        if (data.type === 'new_candidate') {
+                            this.$message.info(`新考生连接: ${data.data.username}`);
+                            this.refreshCandidates();
+                        } else if (data.type === 'candidate_disconnect') {
+                            this.$message.warning(`考生断开连接: ${data.data.userId}`);
+                            this.refreshCandidates();
+                        } else if (data.type === 'candidate_update') {
+                            const candidate = this.candidates.find(c => c.username === data.data.userId);
+                            if (candidate) {
+                                candidate.progress = data.data.progress;
+                                candidate.lastActivity = data.data.lastActivity;
+                                candidate.isFullscreen = data.data.isFullscreen;
+                                candidate.isVisible = data.data.isVisible;
+                                this.updateCharts();
+                            }
+                        } else if (data.type === 'exam_submitted') {
+                            this.$message.success(`考生提交试卷: ${data.data.candidateId}`);
+                            this.refreshCandidates();
+                        } else if (data.type === 'auto_violation') {
+                            this.$message.warning(`考生自动违规报告: ${data.data.candidateId} - ${data.data.violation.type}`);
+                            this.refreshCandidates();
+                        } else if (data.type === 'violation_reported') {
+                            this.$message.warning(`考生违规记录: ${data.data.candidateId}`);
+                            this.refreshCandidates();
+                        }
+                    };
+                },
+                async refreshCandidates() {
+                    try {
+                        const res = await axios.get('/api/exam/candidates');
+                        this.candidates = res.data;
+                        this.updateCharts();
+                    } catch (error) {
+                        console.error('获取考生列表失败:', error);
+                    }
+                },
+                async updateExamConfig() {
+                    try {
+                        const res = await axios.post('/api/exam/config', this.examConfig);
+                        if (res.data.success) {
+                            this.$message.success('考试配置更新成功');
+                            this.refreshCandidates();
+                        }
+                    } catch (error) {
+                        console.error('更新考试配置失败:', error);
+                        this.$message.error('更新考试配置失败');
+                    }
+                },
+                getStatusText(status) {
+                    const statusMap = {
+                        'not_started': '未开始',
+                        'in_progress': '进行中',
+                        'completed': '已完成',
+                        'disqualified': '已取消资格'
+                    };
+                    return statusMap[status] || status;
+                },
+                formatTime(time) {
+                    if (!time) return '无记录';
+                    return new Date(time).toLocaleString();
+                },
+                async viewCandidateDetails(username) {
+                    try {
+                        const res = await axios.get(`/api/exam/candidate/${username}`);
+                        this.selectedCandidate = res.data;
+                        this.detailDialogVisible = true;
+                    } catch (error) {
+                        console.error('获取考生详情失败:', error);
+                        this.$message.error('获取考生详情失败');
+                    }
+                },
+                showViolationDialog(username) {
+                    this.violationForm.candidateId = username;
+                    this.violationForm.level = '一级';
+                    this.violationForm.description = '';
+                    this.violationDialogVisible = true;
+                },
+                async recordViolation() {
+                    try {
+                        const res = await axios.post('/api/exam/violation', this.violationForm);
+                        if (res.data.success) {
+                            this.$message.success('违规记录成功');
+                            this.violationDialogVisible = false;
+                            this.refreshCandidates();
+                        }
+                    } catch (error) {
+                        console.error('记录违规失败:', error);
+                        this.$message.error('记录违规失败');
+                    }
+                },
+                async disqualifyCandidate(username) {
+                    try {
+                        this.violationForm.candidateId = username;
+                        this.violationForm.level = '三级';
+                        this.violationForm.description = '考官手动取消考试资格';
+                        
+                        const res = await axios.post('/api/exam/violation', this.violationForm);
+                        if (res.data.success) {
+                            this.$message.success('已取消考生考试资格');
+                            this.refreshCandidates();
+                        }
+                    } catch (error) {
+                        console.error('取消考生资格失败:', error);
+                        this.$message.error('取消考生资格失败');
+                    }
+                },
+                initCharts() {
+                    const ctx1 = document.getElementById('statusChart').getContext('2d');
+                    const ctx2 = document.getElementById('progressChart').getContext('2d');
+                    
+                    this.statusChart = new Chart(ctx1, {
+                        type: 'doughnut',
+                        data: {
+                            labels: ['未开始', '进行中', '已完成', '已取消资格'],
+                            datasets: [{
+                                data: [0, 0, 0, 0],
+                                backgroundColor: [
+                                    '#909399',
+                                    '#409EFF',
+                                    '#67C23A',
+                                    '#F56C6C'
+                                ]
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            title: {
+                                display: true,
+                                text: '考生状态分布'
+                            }
+                        }
+                    });
+                    
+                    this.progressChart = new Chart(ctx2, {
+                        type: 'bar',
+                        data: {
+                            labels: [],
+                            datasets: [{
+                                label: '进度(%)',
+                                data: [],
+                                backgroundColor: '#409EFF'
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            scales: {
+                                yAxes: [{
+                                    ticks: {
+                                        beginAtZero: true,
+                                        max: 100
+                                    }
+                                }]
+                            },
+                            title: {
+                                display: true,
+                                text: '考生进度'
+                            }
+                        }
+                    });
+                    
+                    this.updateCharts();
+                },
+                updateCharts() {
+                    // 更新状态图表
+                    const statusCounts = {
+                        'not_started': 0,
+                        'in_progress': 0,
+                        'completed': 0,
+                        'disqualified': 0
+                    };
+                    
+                    this.candidates.forEach(c => {
+                        statusCounts[c.status] = (statusCounts[c.status] || 0) + 1;
+                    });
+                    
+                    this.statusChart.data.datasets[0].data = [
+                        statusCounts['not_started'],
+                        statusCounts['in_progress'],
+                        statusCounts['completed'],
+                        statusCounts['disqualified']
+                    ];
+                    this.statusChart.update();
+                    
+                    // 更新进度图表
+                    const inProgress = this.candidates.filter(c => c.status === 'in_progress');
+                    this.progressChart.data.labels = inProgress.map(c => c.username);
+                    this.progressChart.data.datasets[0].data = inProgress.map(c => c.progress);
+                    this.progressChart.update();
+                }
+            }
+        });
+    </script>
+</body>
+</html>
