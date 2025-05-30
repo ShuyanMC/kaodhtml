@@ -235,7 +235,7 @@
                 async initializeExaminer() {
                     try {
                         // 验证登录状态
-                        const verifyRes = await axios.get('/api/verify');
+                        const verifyRes = await axios.get('https://cn-sh-2.lcf.im:41998/api/verify');
                         if (!verifyRes.data.authenticated || verifyRes.data.role !== 'examiner') {
                             window.location.href = '/';
                             return;
@@ -258,7 +258,7 @@
                     }
                 },
                 connectWebSocket() {
-                    this.ws = new WebSocket(`ws://${window.location.host}?type=examiner&userId=${this.username}`);
+                    this.ws = new WebSocket(`wss://cn-sh-2.lcf.im:41998/?type=examiner&userId=${this.username}`);
                     
                     this.ws.onmessage = (event) => {
                         const data = JSON.parse(event.data);
@@ -292,7 +292,7 @@
                 },
                 async refreshCandidates() {
                     try {
-                        const res = await axios.get('/api/exam/candidates');
+                        const res = await axios.get('https://cn-sh-2.lcf.im:41998/api/exam/candidates');
                         this.candidates = res.data;
                         this.updateCharts();
                     } catch (error) {
@@ -301,7 +301,7 @@
                 },
                 async updateExamConfig() {
                     try {
-                        const res = await axios.post('/api/exam/config', this.examConfig);
+                        const res = await axios.post('https://cn-sh-2.lcf.im:41998/api/exam/config', this.examConfig);
                         if (res.data.success) {
                             this.$message.success('考试配置更新成功');
                             this.refreshCandidates();
@@ -326,7 +326,7 @@
                 },
                 async viewCandidateDetails(username) {
                     try {
-                        const res = await axios.get(`/api/exam/candidate/${username}`);
+                        const res = await axios.get(`https://cn-sh-2.lcf.im:41998/api/exam/candidate/${username}`);
                         this.selectedCandidate = res.data;
                         this.detailDialogVisible = true;
                     } catch (error) {
@@ -342,7 +342,7 @@
                 },
                 async recordViolation() {
                     try {
-                        const res = await axios.post('/api/exam/violation', this.violationForm);
+                        const res = await axios.post('https://cn-sh-2.lcf.im:41998/api/exam/violation', this.violationForm);
                         if (res.data.success) {
                             this.$message.success('违规记录成功');
                             this.violationDialogVisible = false;
@@ -359,7 +359,7 @@
                         this.violationForm.level = '三级';
                         this.violationForm.description = '考官手动取消考试资格';
                         
-                        const res = await axios.post('/api/exam/violation', this.violationForm);
+                        const res = await axios.post('https://cn-sh-2.lcf.im:41998/api/exam/violation', this.violationForm);
                         if (res.data.success) {
                             this.$message.success('已取消考生考试资格');
                             this.refreshCandidates();
