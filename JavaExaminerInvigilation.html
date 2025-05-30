@@ -244,7 +244,7 @@
                         this.username = verifyRes.data.username;
                         
                         // 获取考试配置
-                        const configRes = await axios.get('/api/exam/config');
+                        const configRes = await axios.get('https://cn-sh-2.lcf.im:41998//api/exam/config');
                         this.examConfig = configRes.data;
                         
                         // 获取考生列表
