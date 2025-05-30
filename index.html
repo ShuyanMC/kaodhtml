@@ -135,7 +135,7 @@
                     this.$refs.loginForm.validate(valid => {
                         if (valid) {
                             this.loading = true;
-                            axios.post('https://localhost:3000/api/login', {
+                            axios.post('https://cn-sh-2.lcf.im:41998/api/login', {
                                 username: this.loginForm.username,
                                 password: this.loginForm.password
                             }).then(response => {
@@ -156,7 +156,7 @@
                     this.$refs.registerForm.validate(valid => {
                         if (valid) {
                             this.loading = true;
-                            axios.post('https://localhost:3000/api/register', {
+                            axios.post('https://cn-sh-2.lcf.im:41998/api/register', {
                                 username: this.registerForm.username,
                                 password: this.registerForm.password
                             }).then(response => {
