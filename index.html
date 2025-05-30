@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>考试系统登录</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/element-ui@2.15.13/lib/theme-chalk/index.css">
+    <script src="https://cdn.jsdelivr.net/npm/vue@2.6.14/dist/vue.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/element-ui@2.15.13/lib/index.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+</head>
+<body>
+    <div id="app">
+        <div class="login-container">
+            <div class="login-box">
+                <div class="login-logo">
+                    <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNTAgMjUwIj48cGF0aCBmaWxsPSIjMzM5OUZGIiBkPSJNMTI1IDMwTDE4Ny4xNDYgNjQuODU0TDE1Ni44NTQgMTI1TDE4Ny4xNDYgMTg1LjE0NkwxMjUgMjIwTDEwOS4xNDYgMTg1LjE0NkwxMjUgMTUwbC0xNS4xNDYgMzUuMTQ2TDEyNSAyMjBMMjIuODU0IDE4NS4xNDZMNjIuNSAxMjVMMjIuODU0IDY0Ljg1NEwxMjUgMzBaIi8+PHBhdGggZmlsbD0iIzU1QkVGRiIgZD0iTTEyNSAzMEwxODcuMTQ2IDY0Ljg1NEwxNTYuODU0IDEyNUwxODcuMTQ2IDE4NS4xNDZMMTI1IDIyMEwxMjUgMTUwTDEwOS4xNDYgMTg1LjE0NkwxMjUgMTUwbC0xNS4xNDYgMzUuMTQ2TDEyNSAyMjBMMjIuODU0IDE4NS4xNDZMNi41IDEyNUwyMi44NTQgNjQuODU0TDEyNSAzMFoiLz48cGF0aCBmaWxsPSIjMzM5OUZGIiBkPSJNMTI1IDMwTDE4Ny4xNDYgNjQuODU0TDE1Ni44NTQgMTI1TDE4Ny4xNDYgMTg1LjE0NkwxMjUgMjIwTDEwOS4xNDYgMTg1LjE0NkwxMjUgMTUwbC0xNS4xNDYgMzUuMTQ2TDEyNSAyMjBMMjIuODU0IDE4NS4xNDZMNjIuNSAxMjVMMjIuODU0IDY0Ljg1NEwxMjUgMzBaIi8+PC9zdmc+" alt="考试系统">
+                    <h1>考试系统</h1>
+                </div>
+                
+                <el-tabs v-model="activeTab" stretch>
+                    <el-tab-pane label="登录" name="login">
+                        <el-form :model="loginForm" :rules="loginRules" ref="loginForm" label-width="80px">
+                            <el-form-item label="用户名" prop="username">
+                                <el-input v-model="loginForm.username" placeholder="请输入用户名"></el-input>
+                            </el-form-item>
+                            <el-form-item label="密码" prop="password">
+                                <el-input v-model="loginForm.password" type="password" placeholder="请输入密码"></el-input>
+                            </el-form-item>
+                            <el-form-item>
+                                <el-button type="primary" @click="handleLogin" :loading="loading" style="width:100%;">登录</el-button>
+                            </el-form-item>
+                        </el-form>
+                    </el-tab-pane>
+                    
+                    <el-tab-pane label="注册" name="register">
+                        <el-form :model="registerForm" :rules="registerRules" ref="registerForm" label-width="80px">
+                            <el-form-item label="用户名" prop="username">
+                                <el-input v-model="registerForm.username" placeholder="请输入用户名"></el-input>
+                            </el-form-item>
+                            <el-form-item label="密码" prop="password">
+                                <el-input v-model="registerForm.password" type="password" placeholder="请输入密码"></el-input>
+                            </el-form-item>
+                            <el-form-item label="确认密码" prop="confirmPassword">
+                                <el-input v-model="registerForm.confirmPassword" type="password" placeholder="请再次输入密码"></el-input>
+                            </el-form-item>
+                            <el-form-item>
+                                <el-button type="primary" @click="handleRegister" :loading="loading" style="width:100%;">注册</el-button>
+                            </el-form-item>
+                        </el-form>
+                    </el-tab-pane>
+                </el-tabs>
+                
+                <div class="login-footer">
+                    <p>考官账户: ZCRAFT/d21812900 或 DN/zdz21812900</p>
+                    <p>© 2023 考试监控系统 v1.0</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        new Vue({
+            el: '#app',
+            data() {
+                const validateUsername = (rule, value, callback) => {
+                    if (!value) {
+                        return callback(new Error('用户名不能为空'));
+                    }
+                    if (value.length < 4 || value.length > 20) {
+                        return callback(new Error('用户名长度应在4-20个字符之间'));
+                    }
+                    if (!/^[a-zA-Z0-9_]+$/.test(value)) {
+                        return callback(new Error('用户名只能包含字母、数字和下划线'));
+                    }
+                    callback();
+                };
+                
+                const validatePassword = (rule, value, callback) => {
+                    if (!value) {
+                        return callback(new Error('密码不能为空'));
+                    }
+                    if (value.length < 6) {
+                        return callback(new Error('密码长度不能少于6个字符'));
+                    }
+                    callback();
+                };
+                
+                const validateConfirmPassword = (rule, value, callback) => {
+                    if (!value) {
+                        return callback(new Error('请再次输入密码'));
+                    }
+                    if (value !== this.registerForm.password) {
+                        return callback(new Error('两次输入密码不一致'));
+                    }
+                    callback();
+                };
+                
+                return {
+                    activeTab: 'login',
+                    loading: false,
+                    loginForm: {
+                        username: '',
+                        password: ''
+                    },
+                    registerForm: {
+                        username: '',
+                        password: '',
+                        confirmPassword: ''
+                    },
+                    loginRules: {
+                        username: [
+                            { validator: validateUsername, trigger: 'blur' }
+                        ],
+                        password: [
+                            { validator: validatePassword, trigger: 'blur' }
+                        ]
+                    },
+                    registerRules: {
+                        username: [
+                            { validator: validateUsername, trigger: 'blur' }
+                        ],
+                        password: [
+                            { validator: validatePassword, trigger: 'blur' }
+                        ],
+                        confirmPassword: [
+                            { validator: validateConfirmPassword, trigger: 'blur' }
+                        ]
+                    }
+                };
+            },
+            methods: {
+                handleLogin() {
+                    this.$refs.loginForm.validate(valid => {
+                        if (valid) {
+                            this.loading = true;
+                            axios.post('https://localhost:3000/api/login', {
+                                username: this.loginForm.username,
+                                password: this.loginForm.password
+                            }).then(response => {
+                                if (response.data.success) {
+                                    window.location.href = response.data.redirect;
+                                } else {
+                                    this.$message.error(response.data.error || '登录失败');
+                                }
+                            }).catch(error => {
+                                this.$message.error(error.response?.data?.error || '登录失败');
+                            }).finally(() => {
+                                this.loading = false;
+                            });
+                        }
+                    });
+                },
+                handleRegister() {
+                    this.$refs.registerForm.validate(valid => {
+                        if (valid) {
+                            this.loading = true;
+                            axios.post('https://localhost:3000/api/register', {
+                                username: this.registerForm.username,
+                                password: this.registerForm.password
+                            }).then(response => {
+                                if (response.data.success) {
+                                    this.$message.success('注册成功，请登录');
+                                    this.activeTab = 'login';
+                                    this.loginForm.username = this.registerForm.username;
+                                    this.loginForm.password = '';
+                                    this.registerForm.password = '';
+                                    this.registerForm.confirmPassword = '';
+                                } else {
+                                    this.$message.error(response.data.error || '注册失败');
+                                }
+                            }).catch(error => {
+                                this.$message.error(error.response?.data?.error || '注册失败');
+                            }).finally(() => {
+                                this.loading = false;
+                            });
+                        }
+                    });
+                }
+            }
+        });
+    </script>
+</body>
+</html>
